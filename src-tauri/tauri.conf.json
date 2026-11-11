@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "devhud",
+  "productName": "DevHUD",
   "version": "0.1.0",
   "identifier": "com.sayan.devhud",
   "build": {
@@ -12,13 +12,19 @@
   "app": {
     "windows": [
       {
-        "title": "devhud",
-        "width": 800,
-        "height": 600
+        "title": "DevHUD",
+        "width": 1180,
+        "height": 780,
+        "minWidth": 760,
+        "minHeight": 560,
+        "decorations": false,
+        "transparent": true,
+        "alwaysOnTop": true,
+        "resizable": true
       }
     ],
     "security": {
-      "csp": null
+      "csp": "default-src 'self'; connect-src ipc: http://ipc.localhost ws://localhost:1420; img-src 'self' asset: http://asset.localhost data:; style-src 'self' 'unsafe-inline'; font-src 'self' data:"
     }
   },
   "bundle": {

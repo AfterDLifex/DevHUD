@@ -1,21 +1,540 @@
-<main class="container">
-  <h1>Welcome to Tauri + Angular!</h1>
+<div class="app-window">
+  <header class="topbar" data-tauri-drag-region>
+    <a class="brand" href="#" (click)="$event.preventDefault(); navigate('overview')">
+      <span class="brand-mark" aria-hidden="true"><span></span><span></span><span></span><span></span></span>
+      <span>dev<span class="brand-accent">hud</span></span>
+    </a>
+    <div class="topbar-center" aria-label="Application status">
+      <span class="status-dot"></span>
+      <span>LOCAL WORKSPACE</span>
+    </div>
+    <div class="window-actions">
+      <span class="date-label">{{ todayLabel }}</span>
+      <button type="button" class="window-control" aria-label="Minimize DevHUD" (click)="minimizeWindow()">−</button>
+      <button type="button" class="window-control window-close" aria-label="Close DevHUD" (click)="closeWindow()">×</button>
+    </div>
+  </header>
 
-  <div class="row">
-    <a href="https://tauri.app" target="_blank">
-      <img src="/assets/tauri.svg" class="logo tauri" alt="Tauri logo" />
-    </a>
-    <a href="https://angular.io" target="_blank">
-      <img src="/assets/angular.svg" class="logo angular" alt="Angular logo" />
-    </a>
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="workspace-label">WORKSPACE</div>
+      <nav aria-label="Main navigation">
+        <button type="button" class="nav-item" [class.active]="page() === 'overview'" (click)="navigate('overview')">
+          <span class="nav-icon icon-grid" aria-hidden="true"></span><span>Overview</span>
+          <span class="nav-shortcut">01</span>
+        </button>
+        <button type="button" class="nav-item" [class.active]="page() === 'sprint'" (click)="navigate('sprint')">
+          <span class="nav-icon icon-sprint" aria-hidden="true"></span><span>Sprint</span>
+          @if (activeSprint()) { <span class="nav-count">{{ openItems().length }}</span> }
+        </button>
+        <button type="button" class="nav-item" [class.active]="page() === 'inbox'" (click)="navigate('inbox')">
+          <span class="nav-icon icon-inbox" aria-hidden="true"></span><span>Quick capture</span>
+          @if (inboxItems().length) { <span class="nav-count">{{ inboxItems().length }}</span> }
+        </button>
+        <button type="button" class="nav-item" [class.active]="page() === 'upcoming'" (click)="navigate('upcoming')">
+          <span class="nav-icon icon-clock" aria-hidden="true"></span><span>Due dates</span>
+          @if (upcomingItems().length) { <span class="nav-count">{{ upcomingItems().length }}</span> }
+        </button>
+        <button type="button" class="nav-item" [class.active]="page() === 'reminders'" (click)="navigate('reminders')">
+          <span class="nav-icon icon-bell" aria-hidden="true"></span><span>Reminders</span>
+          @if (activeReminders().length) { <span class="nav-count">{{ activeReminders().length }}</span> }
+        </button>
+        <button type="button" class="nav-item" [class.active]="page() === 'history'" (click)="navigate('history')">
+          <span class="nav-icon icon-history" aria-hidden="true"></span><span>Sprint history</span>
+        </button>
+        <button type="button" class="nav-item" [class.active]="page() === 'vault'" (click)="navigate('vault')">
+          <span class="nav-icon icon-settings" aria-hidden="true"></span><span>Credential vault</span>
+        </button>
+        <button type="button" class="nav-item nav-settings" [class.active]="page() === 'settings'" (click)="navigate('settings')">
+          <span class="nav-icon icon-settings" aria-hidden="true"></span><span>Settings & data</span>
+        </button>
+      </nav>
+
+      <div class="sidebar-bottom">
+        <div class="sidebar-sprint">
+          <span class="mini-label">ACTIVE SPRINT</span>
+          @if (activeSprint(); as sprint) {
+            <strong>{{ sprint.name }}</strong>
+            <span class="sprint-dates">{{ dueLabel(sprint.startAt) }} — {{ dueLabel(sprint.endAt) }}</span>
+          } @else {
+            <strong class="muted">No active sprint</strong>
+            <button type="button" class="text-action" (click)="showSprintForm.set(true)">Create one <span>→</span></button>
+          }
+        </div>
+        <div class="profile-chip">
+          <span class="avatar">D</span>
+          <span><strong>Developer</strong><small>Personal space</small></span>
+          <span class="online-dot"></span>
+        </div>
+      </div>
+    </aside>
+
+    <main class="content">
+      @if (errorMessage()) {
+        <div class="notice notice-error" role="alert">
+          <span>{{ errorMessage() }}</span>
+          <button type="button" aria-label="Dismiss error" (click)="errorMessage.set('')">×</button>
+        </div>
+      }
+      @if (successMessage()) {
+        <div class="notice notice-success" role="status">{{ successMessage() }}</div>
+      }
+      @for (reminder of dueReminders(); track reminder.occurrenceId) {
+        <section class="due-reminder" role="alert">
+          <span class="due-reminder-icon">◷</span>
+          <span class="due-reminder-copy"><strong>Reminder</strong><small>{{ reminder.title }}</small></span>
+          <div class="reminder-actions">
+            <button type="button" class="reminder-action" (click)="snoozeReminder(reminder, 5)">Snooze 5m</button>
+            <button type="button" class="reminder-action" (click)="snoozeReminder(reminder, 15)">15m</button>
+            <button type="button" class="reminder-action" (click)="snoozeReminder(reminder, 60)">1h</button>
+            <button type="button" class="reminder-dismiss" (click)="dismissReminder(reminder)">Dismiss</button>
+          </div>
+        </section>
+      }
+
+      @if (loading()) {
+        <div class="loading-state"><span class="loader"></span><span>Loading your workspace…</span></div>
+      } @else {
+        @switch (page()) {
+          @case ('overview') {
+            <section class="page-heading">
+              <div>
+                <p class="eyebrow">{{ todayLabel }} <span class="eyebrow-line"></span> YOUR DAILY BRIEF</p>
+                <h1>Keep your momentum.</h1>
+                <p class="page-subtitle">A clear view of what matters, without leaving your flow.</p>
+              </div>
+              <button type="button" class="button button-primary" (click)="showItemForm.set(true)" [disabled]="!activeSprint()">
+                <span class="button-plus">+</span> Add work item
+              </button>
+            </section>
+
+            @if (activeSprint(); as sprint) {
+              <section class="sprint-banner">
+                <div class="banner-orbit orbit-one"></div><div class="banner-orbit orbit-two"></div>
+                <div class="banner-copy">
+                  <span class="banner-kicker"><span class="status-dot"></span> ACTIVE SPRINT</span>
+                  <h2>{{ sprint.name }}</h2>
+                  <p>{{ sprint.goal || 'A good day to make progress on the important things.' }}</p>
+                </div>
+                <div class="banner-progress">
+                  <div class="progress-ring" [style.--progress]="sprintItems().length ? (completedCount() / sprintItems().length * 100) + '%' : '0%'">
+                    <span>{{ sprintItems().length ? (completedCount() / sprintItems().length * 100 | number:'1.0-0') : 0 }}<small>%</small></span>
+                  </div>
+                  <span>SPRINT PROGRESS</span>
+                </div>
+                <div class="banner-meta">
+                  <span><strong>{{ dueLabel(sprint.endAt) }}</strong><small>SPRINT END</small></span>
+                  <span class="meta-divider"></span>
+                  <span><strong>{{ openItems().length }} <small>OPEN</small></strong><small>WORK ITEMS</small></span>
+                </div>
+              </section>
+
+              <section class="metrics-grid" aria-label="Sprint summary">
+                <article class="metric-card">
+                  <div class="metric-icon metric-focus"><span></span></div>
+                  <div><span class="metric-label">IN PROGRESS</span><strong class="metric-value">{{ currentTask() ? 1 : 0 }}</strong><small class="metric-note">{{ currentTask()?.title || 'Nothing in progress' }}</small></div>
+                  <span class="metric-spark spark-violet" aria-hidden="true">⌁</span>
+                </article>
+                <article class="metric-card">
+                  <div class="metric-icon metric-done">✓</div>
+                  <div><span class="metric-label">COMPLETED</span><strong class="metric-value">{{ completedCount() }}</strong><small class="metric-note">in this sprint</small></div>
+                  <span class="metric-spark spark-green" aria-hidden="true">⌁</span>
+                </article>
+                <article class="metric-card">
+                  <div class="metric-icon metric-blocked">!</div>
+                  <div><span class="metric-label">BLOCKED</span><strong class="metric-value">{{ blockerCount() }}</strong><small class="metric-note">{{ blockerCount() ? 'Needs your attention' : 'All clear for now' }}</small></div>
+                  <span class="metric-spark spark-orange" aria-hidden="true">⌁</span>
+                </article>
+              </section>
+
+              <section class="dashboard-columns">
+                <article class="panel work-panel">
+                  <div class="panel-heading">
+                    <div><span class="section-kicker">YOUR FOCUS</span><h2>Today’s work <span class="heading-count">{{ openItems().length }}</span></h2></div>
+                    <button class="subtle-button" type="button" (click)="navigate('sprint')">View sprint <span>↗</span></button>
+                  </div>
+                  @if (currentTask(); as task) {
+                    <div class="focus-card">
+                      <div class="focus-indicator"></div>
+                      <div class="focus-copy"><span class="task-type">{{ task.kind.replace('_', ' ') }}</span><strong>{{ task.title }}</strong><small>{{ task.description || 'Your current focus item' }}</small></div>
+                      <span class="focus-pill">IN FOCUS</span>
+                    </div>
+                  }
+                  <div class="task-list compact-list">
+                    @for (item of otherOpenItems().slice(0, 4); track item.id) {
+                      <div class="task-row">
+                        <button class="task-check" type="button" [attr.aria-label]="'Complete ' + item.title" (click)="changeStatus(item, 'done')"></button>
+                        <span class="kind-marker" [class]="'kind-marker kind-' + item.kind" aria-hidden="true"></span>
+                        <span class="task-title">{{ item.title }}</span>
+                        <span class="priority-dot" [class]="'priority-dot priority-' + item.priority" [attr.aria-label]="item.priority + ' priority'"></span>
+                        <span class="task-due">{{ dueLabel(item.dueAt) }}</span>
+                      </div>
+                    } @empty {
+                      @if (!currentTask()) { <div class="empty-inline">Your sprint is clear. Add an item when something comes up.</div> }
+                    }
+                  </div>
+                </article>
+
+                <article class="panel capture-panel">
+                  <div class="panel-heading">
+                    <div><span class="section-kicker">CLEAR YOUR HEAD</span><h2>Quick capture</h2></div>
+                    <span class="capture-glyph" aria-hidden="true">↳</span>
+                  </div>
+                  <p class="capture-description">A thought worth keeping? Drop it here and sort it out later.</p>
+                  <form class="capture-form" (ngSubmit)="createWorkItem(true)">
+                    <label class="sr-only" for="capture-text">Capture an idea or task</label>
+                    <textarea id="capture-text" name="captureText" [(ngModel)]="captureText" placeholder="Type a task, note, blocker or idea…" rows="3" maxlength="500"></textarea>
+                    <div class="capture-controls">
+                      <label class="select-wrap">
+                        <span class="sr-only">Capture type</span>
+                        <select name="captureKind" [(ngModel)]="captureKind">
+                          <option value="task">Task</option>
+                          <option value="blocker">Blocker</option>
+                          <option value="production_note">Production note</option>
+                          <option value="idea">Future idea</option>
+                        </select>
+                      </label>
+                      <button type="submit" class="button button-dark" [disabled]="saving() || !captureText.trim()">Save to inbox <span>↗</span></button>
+                    </div>
+                  </form>
+                  <div class="capture-footnote"><span class="local-lock" aria-hidden="true">◆</span><span>Saved locally on this device</span></div>
+                </article>
+              </section>
+            } @else {
+              <section class="first-run-card">
+                <div class="first-run-art"><div class="first-run-orb"></div><span class="art-star star-a">✳</span><span class="art-star star-b">·</span><span class="art-star star-c">+</span></div>
+                <div class="first-run-copy">
+                  <span class="section-kicker">A FRESH START</span>
+                  <h2>Make room for your best work.</h2>
+                  <p>Create a sprint to bring your goals, blockers and next steps into one calm, focused space.</p>
+                  <button type="button" class="button button-primary" (click)="showSprintForm.set(true)">Create your first sprint <span>→</span></button>
+                </div>
+              </section>
+            }
+
+            <footer class="content-footer"><span>● Your data stays on this device</span><span>Built for focus <i>✳</i></span></footer>
+          }
+
+          @case ('sprint') {
+            <section class="page-heading">
+              <div><p class="eyebrow">YOUR WORK <span class="eyebrow-line"></span> SPRINT BOARD</p><h1>{{ activeSprint()?.name || 'Sprint board' }}</h1><p class="page-subtitle">{{ activeSprint()?.goal || 'Create a sprint to organize your next steps.' }}</p></div>
+              <div class="heading-actions">
+                @if (activeSprint()) { <button type="button" class="button button-quiet" (click)="archiveActiveSprint()" [disabled]="saving()">Archive sprint</button> }
+                <button type="button" class="button button-primary" (click)="showItemForm.set(true)" [disabled]="!activeSprint()"><span class="button-plus">+</span> Add item</button>
+              </div>
+            </section>
+            @if (!activeSprint()) {
+              <section class="empty-state panel"><div class="empty-icon">✳</div><h2>No active sprint</h2><p>Start a sprint to make a plan and keep your focus in view.</p><button class="button button-primary" type="button" (click)="showSprintForm.set(true)">Create sprint</button></section>
+            } @else {
+              <section class="board-summary">
+                <span><i class="status-dot"></i> ACTIVE</span><span>{{ openItems().length }} open</span><span>{{ completedCount() }} completed</span><span>{{ blockerCount() }} blocked</span>
+              </section>
+              <section class="panel board-panel">
+                @for (item of sprintItems(); track item.id) {
+                  <article class="board-row" [class.row-done]="item.status === 'done'">
+                    <button type="button" class="task-check" [class.checked]="item.status === 'done'" [attr.aria-label]="item.status === 'done' ? 'Mark ' + item.title + ' as to do' : 'Complete ' + item.title" (click)="changeStatus(item, item.status === 'done' ? 'todo' : 'done')">@if (item.status === 'done') { ✓ }</button>
+                    <div class="board-item-copy"><span class="task-type">{{ item.kind.replace('_', ' ') }} <span class="priority-label" [class]="'priority-label priority-text-' + item.priority">{{ item.priority }}</span></span><strong>{{ item.title }}</strong>@if (item.description) { <small>{{ item.description }}</small> }</div>
+                    <label class="status-select-label"><span class="sr-only">Status for {{ item.title }}</span><select [ngModel]="item.status" (ngModelChange)="changeStatus(item, $event)" [name]="'status-' + item.id"><option value="todo">To do</option><option value="in_progress">In progress</option><option value="blocked">Blocked</option><option value="done">Done</option><option value="cancelled">Cancelled</option></select></label>
+                    <span class="task-due">{{ dueLabel(item.dueAt) }}</span>
+                  </article>
+                } @empty {
+                  <div class="empty-state"><div class="empty-icon">✳</div><h2>A clean slate</h2><p>Add a work item to get your sprint moving.</p></div>
+                }
+              </section>
+            }
+          }
+
+          @case ('inbox') {
+            <section class="page-heading">
+              <div><p class="eyebrow">QUICK CAPTURE <span class="eyebrow-line"></span> SORT IT WHEN YOU’RE READY</p><h1>Your inbox.</h1><p class="page-subtitle">Small thoughts, saved before they slip away.</p></div>
+            </section>
+            <section class="panel inbox-panel">
+              <form class="capture-form inbox-capture" (ngSubmit)="createWorkItem(true)">
+                <label class="sr-only" for="inbox-capture">Capture an idea or task</label>
+                <textarea id="inbox-capture" name="inboxCaptureText" [(ngModel)]="captureText" placeholder="What do you want to remember?" rows="2" maxlength="500"></textarea>
+                <div class="capture-controls">
+                  <label class="select-wrap"><span class="sr-only">Capture type</span><select name="inboxCaptureKind" [(ngModel)]="captureKind"><option value="task">Task</option><option value="blocker">Blocker</option><option value="production_note">Production note</option><option value="idea">Future idea</option></select></label>
+                  <button type="submit" class="button button-primary" [disabled]="saving() || !captureText.trim()">Add to inbox <span>→</span></button>
+                </div>
+              </form>
+              <div class="inbox-list">
+                @for (item of inboxItems(); track item.id) {
+                  <article class="board-row">
+                    <span class="kind-marker" [class]="'kind-marker kind-' + item.kind" aria-hidden="true"></span>
+                    <div class="board-item-copy"><span class="task-type">{{ item.kind.replace('_', ' ') }} <span class="inbox-date">{{ dueLabel(item.createdAt) }}</span></span><strong>{{ item.title }}</strong>@if (item.description) { <small>{{ item.description }}</small> }</div>
+                    <span class="inbox-state">INBOX</span>
+                  </article>
+                } @empty {
+                  <div class="empty-state"><div class="empty-icon">↳</div><h2>Nothing on your mind?</h2><p>That’s a good feeling. Capture something here whenever it comes up.</p></div>
+                }
+              </div>
+            </section>
+          }
+
+          @case ('upcoming') {
+            <section class="page-heading">
+              <div><p class="eyebrow">STAY AHEAD <span class="eyebrow-line"></span> PLANNED WORK</p><h1>Coming up.</h1><p class="page-subtitle">A quick look at unfinished work with a due date.</p></div>
+            </section>
+            <section class="panel board-panel">
+              @for (item of upcomingItems(); track item.id) {
+                <article class="board-row">
+                  <button type="button" class="task-check" [attr.aria-label]="'Complete ' + item.title" (click)="changeStatus(item, 'done')"></button>
+                  <span class="kind-marker" [class]="'kind-marker kind-' + item.kind" aria-hidden="true"></span>
+                  <div class="board-item-copy"><span class="task-type">{{ item.kind.replace('_', ' ') }}</span><strong>{{ item.title }}</strong></div>
+                  <span class="task-due due-emphasis">{{ dueLabel(item.dueAt) }}</span>
+                </article>
+              } @empty {
+                <div class="empty-state"><div class="empty-icon">◷</div><h2>Nothing due yet</h2><p>Add due dates to work items and they’ll show up here.</p></div>
+              }
+            </section>
+          }
+
+          @case ('reminders') {
+            <section class="page-heading">
+              <div><p class="eyebrow">KEEP IT ON YOUR RADAR <span class="eyebrow-line"></span> LOCAL NOTIFICATIONS</p><h1>Reminders.</h1><p class="page-subtitle">One-time alerts are delivered while DevHUD is running.</p></div>
+              <button type="button" class="button button-primary" (click)="showReminderForm.set(true)"><span class="button-plus">+</span> New reminder</button>
+            </section>
+            <section class="panel board-panel">
+              @for (reminder of activeReminders(); track reminder.id) {
+                <article class="board-row">
+                  <span class="reminder-list-icon">◷</span>
+                  <div class="board-item-copy"><span class="task-type">{{ reminder.timezone }}</span><strong>{{ reminder.title }}</strong></div>
+                  <span class="task-due due-emphasis">{{ dueLabel(reminder.triggerAt) }} · {{ reminder.triggerAt | date:'shortTime' }}</span>
+                  <button type="button" class="reminder-cancel" (click)="cancelReminder(reminder)">Cancel</button>
+                </article>
+              } @empty {
+                <div class="empty-state"><div class="empty-icon">◷</div><h2>No reminders yet</h2><p>Create a one-time reminder. It will notify you while DevHUD is running.</p><button class="button button-primary" type="button" (click)="showReminderForm.set(true)">Create reminder</button></div>
+              }
+            </section>
+            <p class="reminder-limit-note">Reminders are stored locally. Alerts are not guaranteed after DevHUD exits.</p>
+          }
+
+          @case ('history') {
+            <section class="page-heading">
+              <div><p class="eyebrow">YOUR WORK, REMEMBERED <span class="eyebrow-line"></span> ARCHIVED SPRINTS</p><h1>History.</h1><p class="page-subtitle">Snapshots preserve completed and unfinished work as it was.</p></div>
+            </section>
+            <form class="history-search" (ngSubmit)="searchHistory()">
+              <span class="search-icon" aria-hidden="true"></span>
+              <label class="sr-only" for="history-query">Search archived sprints and work</label>
+              <input id="history-query" name="historyQuery" [(ngModel)]="historyQuery" placeholder="Search sprint names, goals and items…" maxlength="200" />
+              <button type="submit" class="button button-quiet" [disabled]="historyLoading()">{{ historyLoading() ? 'Searching…' : 'Search' }}</button>
+            </form>
+
+            @if (historySummary(); as summary) {
+              <section class="panel summary-panel">
+                <div class="panel-heading">
+                  <div><span class="section-kicker">FACTS FROM YOUR ARCHIVE</span><h2>{{ summary.sprint.name }} · Stand-up summary</h2></div>
+                  <div class="summary-actions"><button type="button" class="button button-quiet" (click)="historySummary.set(null)">Close</button><button type="button" class="button button-primary" (click)="copySprintSummary(summary)">Copy summary</button></div>
+                </div>
+                <p class="summary-goal">{{ summary.sprint.goal }}</p>
+                @for (group of [
+                  { label: 'Completed', items: summary.completed },
+                  { label: 'In progress', items: summary.inProgress },
+                  { label: 'Blocked', items: summary.blocked },
+                  { label: 'Remaining', items: summary.remaining },
+                  { label: 'Carried over', items: summary.carriedOver }
+                ]; track group.label) {
+                  @if (group.items.length) {
+                    <div class="summary-group"><strong>{{ group.label }}</strong><ul>@for (title of group.items; track title) { <li>{{ title }}</li> }</ul></div>
+                  }
+                }
+                @if (!summary.completed.length && !summary.inProgress.length && !summary.blocked.length && !summary.remaining.length && !summary.carriedOver.length) {
+                  <p class="summary-goal">No work items were recorded in this sprint.</p>
+                }
+              </section>
+            }
+
+            <section class="history-list">
+              @for (archive of history(); track archive.sprint.id) {
+                <article class="panel history-card">
+                  <div class="history-card-heading">
+                    <div><span class="section-kicker">ARCHIVED {{ dueLabel(archive.archivedAt) }}</span><h2>{{ archive.sprint.name }}</h2><p>{{ archive.sprint.goal || 'No sprint goal recorded.' }}</p></div>
+                    <button type="button" class="button button-quiet" (click)="showSprintSummary(archive.sprint.id)">Stand-up summary</button>
+                  </div>
+                  <div class="history-items">
+                    @for (item of archive.workItems; track item.id) {
+                      <div class="history-item">
+                        <span class="kind-marker" [class]="'kind-marker kind-' + item.kind" aria-hidden="true"></span>
+                        <span class="history-item-title">{{ item.title }}</span>
+                        <span class="history-status" [class]="'history-status history-' + item.status">{{ statusLabel(item.status) }}</span>
+                        @if (item.status !== 'done' && item.status !== 'cancelled') {
+                          <button type="button" class="carry-button" [disabled]="!activeSprint()" (click)="carryOver(item)">Carry over <span>→</span></button>
+                        }
+                      </div>
+                    } @empty {
+                      <p class="empty-inline">No work items were recorded for this sprint.</p>
+                    }
+                  </div>
+                </article>
+              } @empty {
+                @if (!historyLoading()) {
+                  <section class="panel empty-state"><div class="empty-icon">◷</div><h2>No archived sprints found</h2><p>Archive a sprint to keep a stable snapshot of its goals and work.</p></section>
+                }
+              }
+            </section>
+          }
+
+          @case ('vault') {
+            <section class="page-heading">
+              <div><p class="eyebrow">PRIVATE BY DESIGN <span class="eyebrow-line"></span> ENCRYPTED CREDENTIALS</p><h1>Credential vault.</h1><p class="page-subtitle">Vault contents are encrypted on this device and decrypted only while unlocked.</p></div>
+              @if (vaultUnlocked()) { <button type="button" class="button button-quiet" (click)="lockVault()">Lock vault</button> }
+            </section>
+
+            @if (!vaultUnlocked()) {
+              <section class="panel vault-lock-card">
+                <span class="section-kicker">{{ vaultConfigured() ? 'WELCOME BACK' : 'FIRST-TIME SETUP' }}</span>
+                <h2>{{ vaultConfigured() ? 'Unlock your vault' : 'Create a master password' }}</h2>
+                <p>{{ vaultConfigured() ? 'The master password is never saved. There is no password recovery; losing it means losing access to encrypted items.' : 'Use at least 12 characters. Choose a password you can remember; it cannot be recovered if lost.' }}</p>
+                <form class="vault-password-form" (ngSubmit)="submitVaultPassword()">
+                  <label for="vault-password">Master password</label>
+                  <input id="vault-password" name="vaultPassword" [(ngModel)]="vaultPassword" type="password" autocomplete="current-password" minlength="12" maxlength="1024" required />
+                  @if (!vaultConfigured()) {
+                    <label for="vault-password-confirm">Confirm master password</label>
+                    <input id="vault-password-confirm" name="vaultPasswordConfirm" [(ngModel)]="vaultPasswordConfirm" type="password" autocomplete="new-password" minlength="12" maxlength="1024" required />
+                  }
+                  <button type="submit" class="button button-primary" [disabled]="vaultBusy() || vaultPassword.length < 12">{{ vaultBusy() ? 'Working…' : (vaultConfigured() ? 'Unlock vault' : 'Create encrypted vault') }}</button>
+                </form>
+                <p class="vault-warning">Clipboard copies are cleared after 30 seconds only when the clipboard still contains the copied value. Other apps may retain clipboard history.</p>
+              </section>
+            } @else {
+              <section class="vault-toolbar">
+                <form class="history-search" (ngSubmit)="refreshVaultItems()">
+                  <span class="search-icon" aria-hidden="true"></span>
+                  <label class="sr-only" for="vault-query">Search decrypted vault metadata</label>
+                  <input id="vault-query" name="vaultQuery" [(ngModel)]="vaultQuery" placeholder="Search title, username, URL or tags…" maxlength="200" />
+                  <button type="submit" class="button button-quiet">Search</button>
+                </form>
+                <button type="button" class="button button-primary" (click)="showVaultItemForm.set(!showVaultItemForm())">{{ showVaultItemForm() ? 'Cancel' : '+ Add credential' }}</button>
+              </section>
+
+              @if (showVaultItemForm()) {
+                <section class="panel vault-form-card">
+                  <div class="panel-heading"><div><span class="section-kicker">ENCRYPTED AT REST</span><h2>New vault item</h2></div></div>
+                  <form class="vault-item-form" (ngSubmit)="saveVaultItem()">
+                    <label>Title<input name="vaultTitle" [(ngModel)]="vaultTitle" maxlength="200" required /></label>
+                    <label>Type<input name="vaultKind" [(ngModel)]="vaultKind" maxlength="40" /></label>
+                    <label>URL<input name="vaultUrl" [(ngModel)]="vaultUrl" type="url" maxlength="2048" /></label>
+                    <label>Username<input name="vaultUsername" [(ngModel)]="vaultUsername" maxlength="512" autocomplete="off" /></label>
+                    <label>Password / secret<input name="vaultSecret" [(ngModel)]="vaultSecret" type="password" maxlength="4096" autocomplete="new-password" /></label>
+                    <label>Tags <small>Comma-separated</small><input name="vaultTags" [(ngModel)]="vaultTags" /></label>
+                    <label class="vault-notes">Notes<textarea name="vaultNotes" [(ngModel)]="vaultNotes" maxlength="10000" rows="3"></textarea></label>
+                    <div class="vault-form-actions"><button type="button" class="button button-quiet" (click)="showVaultItemForm.set(false)">Cancel</button><button type="submit" class="button button-primary" [disabled]="vaultBusy() || !vaultTitle.trim()">Save encrypted item</button></div>
+                  </form>
+                </section>
+              }
+
+              <p class="vault-warning">Backups contain encrypted item payloads and vault configuration metadata. Decrypted values are not included in productivity exports. The vault locks after five minutes idle or when you leave this page.</p>
+              <section class="vault-list">
+                @for (item of vaultItems(); track item.id) {
+                  <article class="panel vault-item-card">
+                    <div class="vault-item-main"><span class="section-kicker">{{ item.kind }} @if (item.tags.length) { · {{ item.tags.join(' · ') }} }</span><h2>{{ item.title }}</h2>@if (item.url) { <a [href]="item.url" target="_blank" rel="noreferrer">{{ item.url }}</a> }@if (item.username) { <p>{{ item.username }}</p> }</div>
+                    <div class="vault-item-actions">
+                      @if (item.username) { <button type="button" class="button button-quiet" (click)="copyVaultField(item, 'username')">Copy username</button> }
+                      <button type="button" class="button button-quiet" (click)="copyVaultField(item, 'password')">Copy secret</button>
+                      @if (item.updatedAt) { <button type="button" class="button button-quiet" (click)="copyVaultField(item, 'notes')">Copy notes</button> }
+                      <button type="button" class="vault-delete" (click)="deleteVaultItem(item)">Delete</button>
+                    </div>
+                  </article>
+                } @empty {
+                  <section class="panel empty-state"><div class="empty-icon">◆</div><h2>Your vault is empty</h2><p>Add a credential to keep an encrypted local copy.</p></section>
+                }
+              </section>
+            }
+          }
+
+          @case ('settings') {
+            <section class="page-heading">
+              <div><p class="eyebrow">YOUR SPACE <span class="eyebrow-line"></span> DATA & RECOVERY</p><h1>Settings.</h1><p class="page-subtitle">Keep your local work safe and take it with you.</p></div>
+            </section>
+            <section class="settings-grid">
+              <article class="panel settings-card">
+                <span class="settings-icon">↥</span>
+                <span class="section-kicker">LOCAL RECOVERY</span>
+                <h2>Backups</h2>
+                <p>Create a consistent SQLite snapshot. Before restoring, DevHUD validates it and creates a safety copy of your current data.</p>
+                <button type="button" class="button button-primary" [disabled]="backupBusy()" (click)="createBackup()">{{ backupBusy() ? 'Working…' : 'Create backup now' }}</button>
+              </article>
+              <article class="panel settings-card">
+                <span class="settings-icon settings-export">⇩</span>
+                <span class="section-kicker">PORTABLE DATA</span>
+                <h2>Export productivity data</h2>
+                <p>Download sprints, work items, due dates and reminder metadata as JSON. This export contains no credential vault data.</p>
+                <button type="button" class="button button-quiet" [disabled]="backupBusy()" (click)="exportData()">Download JSON export</button>
+              </article>
+            </section>
+
+            <section class="panel backups-panel">
+              <div class="panel-heading">
+                <div><span class="section-kicker">APP DATA DIRECTORY</span><h2>Available backups</h2></div>
+                <button type="button" class="subtle-button" (click)="refreshBackups()">Refresh <span>↻</span></button>
+              </div>
+              <p class="backup-warning"><span>!</span> Restoring replaces current sprint, item and reminder data. A safety backup is always created first.</p>
+              @for (backup of backups(); track backup.id) {
+                <article class="backup-row">
+                  <span class="backup-file-icon">▤</span>
+                  <span class="backup-copy"><strong>{{ dueLabel(backup.createdAt) }} · {{ backup.createdAt | date:'shortTime' }}</strong><small>{{ backup.id }} · {{ backupSize(backup.sizeBytes) }}</small></span>
+                  @if (backupPreview()?.backup?.id === backup.id && backupPreview(); as preview) {
+                    <span class="backup-counts">{{ preview.sprints }} sprints · {{ preview.workItems }} items · {{ preview.reminders }} reminders</span>
+                    <span class="integrity-badge"><i></i> VERIFIED</span>
+                    <button type="button" class="button button-primary restore-button" [disabled]="backupBusy()" (click)="restoreBackup(backup)">Restore</button>
+                  } @else {
+                    <button type="button" class="button button-quiet" [disabled]="backupBusy()" (click)="previewBackup(backup)">Preview</button>
+                  }
+                </article>
+              } @empty {
+                <div class="backup-empty"><span>◷</span><strong>No backups yet</strong><small>Create a local snapshot before making bigger changes.</small></div>
+              }
+            </section>
+            <section class="data-safety-note"><span class="local-lock">◆</span><p><strong>Local-first by default.</strong> Backups are stored in DevHUD’s application-data directory on this device. They are currently unencrypted and do not contain a vault; keep them on a trusted device.</p></section>
+          }
+        }
+      }
+    </main>
   </div>
-  <p>Click on the logos to learn more about the frameworks</p>
 
-  <form class="row" (submit)="greet($event, greetInput.value)">
-    <input #greetInput id="greet-input" placeholder="Enter a name..." />
-    <button type="submit">Greet</button>
-  </form>
-  <p>{{ greetingMessage() }}</p>
+  @if (showSprintForm()) {
+    <div class="modal-backdrop" (click)="showSprintForm.set(false)" (keydown.escape)="showSprintForm.set(false)">
+      <section class="modal-card" role="dialog" aria-modal="true" aria-labelledby="sprint-form-title" (click)="$event.stopPropagation()">
+        <button type="button" class="modal-close" aria-label="Close" (click)="showSprintForm.set(false)">×</button>
+        <span class="section-kicker">SET YOUR DIRECTION</span><h2 id="sprint-form-title">Create a sprint</h2><p class="modal-description">Give this stretch of work a name and a clear goal.</p>
+        <form class="form-stack" (ngSubmit)="createSprint()">
+          <label>Sprint name<input name="sprintName" [(ngModel)]="sprintName" placeholder="e.g. Sprint 08" required maxlength="120" /></label>
+          <label>Sprint goal<textarea name="sprintGoal" [(ngModel)]="sprintGoal" placeholder="What would make this sprint a success?" rows="3" maxlength="2000"></textarea></label>
+          <div class="form-dates"><label>Starts<input name="sprintStart" type="date" [(ngModel)]="sprintStart" required /></label><label>Ends<input name="sprintEnd" type="date" [(ngModel)]="sprintEnd" required /></label></div>
+          <div class="modal-actions"><button type="button" class="button button-quiet" (click)="showSprintForm.set(false)">Cancel</button><button type="submit" class="button button-primary" [disabled]="saving()">{{ saving() ? 'Creating…' : 'Create sprint' }}</button></div>
+        </form>
+      </section>
+    </div>
+  }
 
-  <router-outlet />
-</main>
+  @if (showItemForm()) {
+    <div class="modal-backdrop" (click)="showItemForm.set(false)" (keydown.escape)="showItemForm.set(false)">
+      <section class="modal-card" role="dialog" aria-modal="true" aria-labelledby="item-form-title" (click)="$event.stopPropagation()">
+        <button type="button" class="modal-close" aria-label="Close" (click)="showItemForm.set(false)">×</button>
+        <span class="section-kicker">{{ activeSprint()?.name || 'SPRINT' }}</span><h2 id="item-form-title">Add work item</h2><p class="modal-description">Capture the next step so you can stay focused.</p>
+        <form class="form-stack" (ngSubmit)="createWorkItem()">
+          <label>Title<input name="itemTitle" [(ngModel)]="itemTitle" placeholder="What needs to get done?" required maxlength="500" /></label>
+          <label>Details<textarea name="itemDescription" [(ngModel)]="itemDescription" placeholder="Optional context" rows="3" maxlength="10000"></textarea></label>
+          <div class="form-dates"><label>Type<select name="itemKind" [(ngModel)]="itemKind"><option value="task">Task</option><option value="blocker">Blocker</option><option value="production_note">Production note</option><option value="idea">Future idea</option></select></label><label>Priority<select name="itemPriority" [(ngModel)]="itemPriority"><option value="low">Low</option><option value="normal">Normal</option><option value="high">High</option><option value="critical">Critical</option></select></label></div>
+          <label>Due date<input name="itemDueAt" type="date" [(ngModel)]="itemDueAt" /></label>
+          <div class="modal-actions"><button type="button" class="button button-quiet" (click)="showItemForm.set(false)">Cancel</button><button type="submit" class="button button-primary" [disabled]="saving()">{{ saving() ? 'Saving…' : 'Save item' }}</button></div>
+        </form>
+      </section>
+    </div>
+  }
+
+  @if (showReminderForm()) {
+    <div class="modal-backdrop" (click)="showReminderForm.set(false)" (keydown.escape)="showReminderForm.set(false)">
+      <section class="modal-card" role="dialog" aria-modal="true" aria-labelledby="reminder-form-title" (click)="$event.stopPropagation()">
+        <button type="button" class="modal-close" aria-label="Close" (click)="showReminderForm.set(false)">×</button>
+        <span class="section-kicker">LOCAL NOTIFICATION</span><h2 id="reminder-form-title">Set a reminder</h2><p class="modal-description">DevHUD will notify you while it’s running, including when minimized.</p>
+        <form class="form-stack" (ngSubmit)="createReminder()">
+          <label>What should you remember?<input name="reminderTitle" [(ngModel)]="reminderTitle" placeholder="e.g. Check the release build" required maxlength="500" /></label>
+          <label>When<input name="reminderTime" type="datetime-local" [(ngModel)]="reminderTime" required /></label>
+          <p class="form-note">Your timezone ({{ timeZoneName }}) is saved with the reminder.</p>
+          <div class="modal-actions"><button type="button" class="button button-quiet" (click)="showReminderForm.set(false)">Cancel</button><button type="submit" class="button button-primary" [disabled]="saving() || !reminderTitle.trim()">{{ saving() ? 'Scheduling…' : 'Schedule reminder' }}</button></div>
+        </form>
+      </section>
+    </div>
+  }
+</div>

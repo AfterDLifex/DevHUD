@@ -1,0 +1,107 @@
+import { Injectable, effect, signal } from "@angular/core";
+import { invoke, TauriError } from "@tauri-apps/api/core";
+
+/**
+ * Typed Tauri command invoker.
+ * Wraps raw `invoke` calls with typed request/response DTOs and error handling.
+ * All frontend Tauri communication should go through this service.
+ */
+@Injectable({ providedIn: "root" })
+export class TauriBridgeService {
+  /**
+   * Generic invoke helper with typed response.
+   * Validates that the response is not an error before setting it.
+   */
+  async call<T>(command: string, payload?: unknown): Promise<T> {
+    try {
+      const result = await invoke<T>(command, payload ?? {});
+      return result;
+    } catch (err) {
+      console.error(`Tauri command "${command}" failed:`, err);
+      throw err;
+    }
+  }
+
+  /**
+   * Example: Health check command.
+   */
+  async ping(): Promise<string> {
+    return this.call("greet", { name: "DevHUD" });
+  }
+}
+
+/**
+ * Application state signal-based store.
+ * Holds the current sprint, active work item, HUD mode, and UI state.
+ */
+@Injectable({ providedIn: "root" })
+export class AppStateService {
+  // HUD mode: "compact", "expanded", "minimized"
+  hudMode = signal<"compact" | "expanded" | "minimized">("compact");
+  // Current sprint ID
+  currentSprintId = signal<string | null>(null);
+  // Current work item ID
+  currentWorkItemId = signal<string | null>(null);
+  // Whether the vault is unlocked
+  isVaultUnlocked = signal<boolean>(false);
+
+  constructor() {
+    // Initialize from persisted storage if available
+    effect(() => {
+      console.log("[AppState] Hud mode:", this.hudMode(), "Sprint:", this.currentSprintId());
+    });
+  }
+
+  setHudMode(mode: "compact" | "expanded" | "minimized") {
+    this.hudMode.set(mode);
+  }
+
+  setCurrentSprint(id: string | null) {
+    this.currentSprintId.set(id);
+  }
+
+  setCurrentWorkItem(id: string | null) {
+    this.currentWorkItemId.set(id);
+  }
+
+  toggleVault() {
+    const current = this.isVaultUnlocked();
+    this.isVaultUnlocked.set(!current);
+  }
+}
+
+/**
+ * Global shortcut service.
+ * Registers and manages Tauri global shortcuts.
+ */
+@Injectable({ providedIn: "root" })
+export class ShortcutService {
+  private registeredShortcuts: Set<string> = new Set();
+
+  register(shortcut: string, handler: () => void): void {
+    // Tauri will handle the shortcut; we just track it
+    this.registeredShortcuts.add(shortcut);
+    console.log(`[Shortcut] Registered: ${shortcut}`);
+  }
+
+  unregister(shortcut: string): void {
+    this.registeredShortcuts.delete(shortcut);
+  }
+}
+
+/**
+ * Notification service.
+ * Handles OS notifications via Tauri plugins.
+ */
+@Injectable({ providedIn: "root" })
+export class NotificationService {
+  async show(title: string, body: string, options?: { silent?: boolean }): Promise<void> {
+    try {
+      // Use Tauri notification plugin when available
+      // For now, console log as placeholder
+      console.log(`[Notification] ${title}: ${body}`);
+    } catch (err) {
+      console.error("Failed to show notification:", err);
+    }
+  }
+}

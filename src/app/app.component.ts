@@ -2,7 +2,7 @@ import { CommonModule } from "@angular/common";
 import { Component, computed, OnDestroy, OnInit, signal } from "@angular/core";
 import { FormsModule } from "@angular/forms";
 import { listen, UnlistenFn } from "@tauri-apps/api/event";
-import { getCurrentWindow } from "@tauri-apps/api/window";
+import { WindowControlService } from "./services/window-control.service";
 import { NotificationPermissionService } from "./services/notification-permission.service";
 import {
   NewWorkItem,
@@ -61,6 +61,8 @@ export class AppComponent implements OnInit, OnDestroy {
   readonly showReminderForm = signal(false);
   readonly historyLoading = signal(false);
   readonly backupBusy = signal(false);
+  readonly isMaximized = signal(false);
+
   readonly activeSprint = computed(
     () => this.sprints().find((sprint) => sprint.status === "active") ?? null,
   );
@@ -141,11 +143,13 @@ export class AppComponent implements OnInit, OnDestroy {
     Intl.DateTimeFormat().resolvedOptions().timeZone || "local time";
   private unlistenReminder: UnlistenFn | null = null;
   private unlistenReminderError: UnlistenFn | null = null;
+  private unlistenResize: UnlistenFn | null = null;
   private vaultStatusTimer: number | null = null;
 
   constructor(
     private readonly bridge: TauriBridgeService,
     private readonly notificationPermission: NotificationPermissionService,
+    private readonly windowCtrl: WindowControlService,
   ) {}
 
   ngOnInit(): void {
@@ -155,6 +159,7 @@ export class AppComponent implements OnInit, OnDestroy {
   ngOnDestroy(): void {
     this.unlistenReminder?.();
     this.unlistenReminderError?.();
+    this.unlistenResize?.();
     if (this.vaultStatusTimer !== null) {
       window.clearInterval(this.vaultStatusTimer);
     }
@@ -184,9 +189,25 @@ export class AppComponent implements OnInit, OnDestroy {
     }
     await this.refresh();
     await this.refreshVaultState();
+    await this.initWindowState();
     this.vaultStatusTimer = window.setInterval(() => {
       void this.syncVaultSession();
     }, 30_000);
+  }
+
+  private async initWindowState(): Promise<void> {
+    try {
+      this.isMaximized.set(await this.windowCtrl.isMaximized());
+      this.unlistenResize = await listen("tauri://resize", async () => {
+        try {
+          this.isMaximized.set(await this.windowCtrl.isMaximized());
+        } catch {
+          /* ignore – window state unavailable */
+        }
+      });
+    } catch {
+      /* Not running inside Tauri (e.g. plain browser dev mode) – ignore. */
+    }
   }
 
   async refresh(): Promise<void> {
@@ -696,7 +717,7 @@ export class AppComponent implements OnInit, OnDestroy {
 
   async minimizeWindow(): Promise<void> {
     try {
-      await getCurrentWindow().minimize();
+      await this.windowCtrl.minimize();
     } catch (error) {
       this.errorMessage.set(this.describeError(error));
     }
@@ -704,7 +725,15 @@ export class AppComponent implements OnInit, OnDestroy {
 
   async closeWindow(): Promise<void> {
     try {
-      await getCurrentWindow().close();
+      await this.windowCtrl.close();
+    } catch (error) {
+      this.errorMessage.set(this.describeError(error));
+    }
+  }
+
+  async toggleMaximize(): Promise<void> {
+    try {
+      this.isMaximized.set(await this.windowCtrl.toggleMaximize());
     } catch (error) {
       this.errorMessage.set(this.describeError(error));
     }
